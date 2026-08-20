@@ -1,0 +1,142 @@
+require('dotenv').config();
+const express = require('express');
+const path = require('path');
+const Database = require('better-sqlite3');
+
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+const db = new Database(path.join(__dirname, 'pedidos.db'));
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pedidos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    solicitante TEXT NOT NULL,
+    setor TEXT NOT NULL,
+    item TEXT NOT NULL,
+    quantidade_estoque INTEGER NOT NULL,
+    quantidade_pedida INTEGER NOT NULL,
+    urgente INTEGER NOT NULL DEFAULT 0,
+    preco_sugerido REAL,
+    link_produto TEXT,
+    fonte_preco TEXT,
+    status TEXT NOT NULL DEFAULT 'aberto',
+    criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS setores_credenciados (
+    setor TEXT PRIMARY KEY
+  );
+`);
+
+function setorEhCredenciado(setor) {
+  const row = db.prepare('SELECT 1 FROM setores_credenciados WHERE setor = ?').get(setor.trim());
+  return !!row;
+}
+
+app.get('/api/setores-credenciados', (req, res) => {
+  const rows = db.prepare('SELECT setor FROM setores_credenciados ORDER BY setor').all();
+  res.json(rows.map(r => r.setor));
+});
+
+app.post('/api/setores-credenciados', (req, res) => {
+  const { setor } = req.body;
+  if (!setor) return res.status(400).json({ erro: 'Informe o nome do setor.' });
+  db.prepare('INSERT OR IGNORE INTO setores_credenciados (setor) VALUES (?)').run(setor.trim());
+  res.json({ ok: true });
+});
+
+app.delete('/api/setores-credenciados/:setor', (req, res) => {
+  db.prepare('DELETE FROM setores_credenciados WHERE setor = ?').run(req.params.setor);
+  res.json({ ok: true });
+});
+
+app.get('/api/pedidos', (req, res) => {
+  const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY urgente DESC, criado_em DESC').all();
+  res.json(pedidos);
+});
+
+app.post('/api/pedidos', (req, res) => {
+  const { solicitante, setor, item, quantidade_estoque, quantidade_pedida } = req.body;
+
+  if (!solicitante || !setor || !item || quantidade_estoque === undefined || !quantidade_pedida) {
+    return res.status(400).json({ erro: 'Preencha solicitante, setor, item, quantidade em estoque e quantidade pedida.' });
+  }
+
+  const estoqueBaixo = Number(quantidade_estoque) < Number(quantidade_pedida) * 0.2;
+  const urgente = setorEhCredenciado(setor) || estoqueBaixo;
+
+  const info = db.prepare(`
+    INSERT INTO pedidos (solicitante, setor, item, quantidade_estoque, quantidade_pedida, urgente)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(solicitante, setor, item, quantidade_estoque, quantidade_pedida, urgente ? 1 : 0);
+
+  const novoPedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(info.lastInsertRowid);
+  res.json(novoPedido);
+});
+
+app.patch('/api/pedidos/:id/status', (req, res) => {
+  const { status } = req.body;
+  db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/pedidos/:id', (req, res) => {
+  db.prepare('DELETE FROM pedidos WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/buscar-preco', async (req, res) => {
+  const { item } = req.body;
+  if (!item) return res.status(400).json({ erro: 'Informe o nome do item.' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({
+      erro: 'Chave da Anthropic não configurada no servidor.'
+    });
+  }
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{
+          role: 'user',
+          content: `Pesquise no Mercado Livre (mercadolivre.com.br) o menor preço atual para o produto: "${item}". ` +
+            `Responda SOMENTE em JSON, sem markdown, sem texto antes ou depois, no formato: ` +
+            `{"produto": "nome exato encontrado", "preco": 99.90, "link": "https://...", "loja_ou_vendedor": "nome"}. ` +
+            `Se não encontrar nada confiável, responda {"erro": "não encontrado"}.`
+        }]
+      })
+    });
+
+    const dados = await resposta.json();
+    const textoResposta = (dados.content || [])
+      .filter(bloco => bloco.type === 'text')
+      .map(bloco => bloco.text)
+      .join('\n')
+      .replace(/```json|```/g, '')
+      .trim();
+
+    const resultado = JSON.parse(textoResposta);
+    res.json(resultado);
+  } catch (erro) {
+    console.error('Erro ao buscar preço:', erro);
+    res.status(500).json({ erro: 'Falha ao buscar preço. Tente novamente.' });
+  }
+});
+
+const PORTA = process.env.PORT || 3000;
+app.listen(PORTA, () => {
+  console.log(`Sistema de pedidos rodando em http://localhost:${PORTA}`);
+});
