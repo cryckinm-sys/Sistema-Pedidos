@@ -1,0 +1,15 @@
+{
+  "name": "sistema-pedidos",
+  "version": "1.0.0",
+  "description": "Sistema de pedidos de compra com busca de preco no Mercado Livre via IA",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5"
+  }
+}
