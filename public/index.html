@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Pedidos</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Sistema de Pedidos</h1>
+    <p class="subtitulo">Cadastre pedidos, veja a urgência e busque o melhor preço automaticamente.</p>
+  </header>
+
+  <main>
+    <section class="cartao" id="form-secao">
+      <h2>Novo pedido</h2>
+      <form id="form-pedido">
+        <label>
+          Nome do solicitante
+          <input type="text" id="solicitante" required placeholder="Ex: Maria Silva">
+        </label>
+
+        <label>
+          Setor de destino
+          <input type="text" id="setor" required placeholder="Ex: Manutenção">
+        </label>
+
+        <label>
+          Item
+          <input type="text" id="item" required placeholder="Ex: Parafuso M6 20mm">
+        </label>
+
+        <div class="linha-dupla">
+          <label>
+            Quantidade em estoque
+            <input type="number" id="quantidade_estoque" required min="0" placeholder="0">
+          </label>
+          <label>
+            Quantidade pedida
+            <input type="number" id="quantidade_pedida" required min="1" placeholder="0">
+          </label>
+        </div>
+
+        <button type="button" id="btn-buscar-preco">Buscar melhor preço no Mercado Livre</button>
+        <div id="resultado-preco" class="resultado-preco" hidden></div>
+
+        <button type="submit" class="btn-primario">Criar pedido</button>
+      </form>
+    </section>
+
+    <section class="cartao">
+      <h2>Configurar setores credenciados</h2>
+      <p class="ajuda">Pedidos de setores credenciados sempre entram como urgentes.</p>
+      <form id="form-setor" class="linha-simples">
+        <input type="text" id="novo-setor" placeholder="Nome do setor">
+        <button type="submit">Adicionar</button>
+      </form>
+      <ul id="lista-setores"></ul>
+    </section>
+
+    <section class="cartao">
+      <h2>Pedidos</h2>
+      <div id="lista-pedidos"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
