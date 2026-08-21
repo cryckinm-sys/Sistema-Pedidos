@@ -1,4 +1,5 @@
 let precoEncontrado = null;
+let senhaComprador = null;
 
 document.getElementById('btn-buscar-preco').addEventListener('click', async () => {
   const item = document.getElementById('item').value.trim();
@@ -64,6 +65,33 @@ document.getElementById('form-pedido').addEventListener('submit', async (evento)
   document.getElementById('form-pedido').reset();
   document.getElementById('resultado-preco').hidden = true;
   precoEncontrado = null;
+  alert('Pedido criado com sucesso!');
+});
+
+document.getElementById('form-login').addEventListener('submit', async (evento) => {
+  evento.preventDefault();
+  const senha = document.getElementById('senha-comprador').value;
+  const erroLogin = document.getElementById('erro-login');
+
+  const resp = await fetch('/api/comprador/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ senha })
+  });
+
+  if (!resp.ok) {
+    erroLogin.hidden = false;
+    return;
+  }
+
+  erroLogin.hidden = true;
+  senhaComprador = senha;
+
+  document.getElementById('login-secao').hidden = true;
+  document.getElementById('area-comprador').hidden = false;
+  document.getElementById('pedidos-secao').hidden = false;
+
+  carregarSetores();
   carregarPedidos();
 });
 
@@ -99,14 +127,25 @@ async function carregarSetores() {
 
   document.querySelectorAll('.remover-setor').forEach(botao => {
     botao.addEventListener('click', async () => {
-      await fetch(`/api/setores-credenciados/${encodeURIComponent(botao.dataset.setor)}`, { method: 'DELETE' });
+      await fetch(`/api/setores-credenciados/${encodeURIComponent(botao.dataset.setor)}`, {
+        method: 'DELETE',
+        headers: { 'x-senha-comprador': senhaComprador }
+      });
       carregarSetores();
     });
   });
 }
 
 async function carregarPedidos() {
-  const resp = await fetch('/api/pedidos');
+  const resp = await fetch('/api/pedidos', {
+    headers: { 'x-senha-comprador': senhaComprador }
+  });
+
+  if (!resp.ok) {
+    document.getElementById('lista-pedidos').innerHTML = '<p class="vazio">Não foi possível carregar os pedidos.</p>';
+    return;
+  }
+
   const pedidos = await resp.json();
   const lista = document.getElementById('lista-pedidos');
 
@@ -122,10 +161,24 @@ async function carregarPedidos() {
         <span>${p.solicitante} · Setor: ${p.setor} · Estoque: ${p.quantidade_estoque}</span>
         <span>Status: ${p.status}</span>
       </div>
-      ${p.urgente ? '<span class="selo-urgente">URGENTE</span>' : ''}
+      <div class="pedido-acoes">
+        ${p.urgente ? '<span class="selo-urgente">URGENTE</span>' : ''}
+        ${p.status !== 'comprado' ? `<button class="btn-comprado" data-id="${p.id}">Marcar comprado</button>` : ''}
+      </div>
     </div>
   `).join('');
-}
 
-carregarSetores();
-carregarPedidos();
+  document.querySelectorAll('.btn-comprado').forEach(botao => {
+    botao.addEventListener('click', async () => {
+      await fetch(`/api/pedidos/${botao.dataset.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-senha-comprador': senhaComprador
+        },
+        body: JSON.stringify({ status: 'comprado' })
+      });
+      carregarPedidos();
+    });
+  });
+}
