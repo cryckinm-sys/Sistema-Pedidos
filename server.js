@@ -30,6 +30,30 @@ db.exec(`
   );
 `);
 
+const SENHA_COMPRADOR = process.env.COMPRADOR_SENHA;
+
+function exigirSenha(req, res, next) {
+  if (!SENHA_COMPRADOR) {
+    return res.status(500).json({ erro: 'Senha do comprador não configurada no servidor.' });
+  }
+  if (req.headers['x-senha-comprador'] !== SENHA_COMPRADOR) {
+    return res.status(401).json({ erro: 'Senha incorreta ou não informada.' });
+  }
+  next();
+}
+
+app.post('/api/comprador/login', (req, res) => {
+  const { senha } = req.body;
+  if (!SENHA_COMPRADOR) {
+    return res.status(500).json({ erro: 'Senha do comprador não configurada no servidor.' });
+  }
+  if (senha === SENHA_COMPRADOR) {
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ erro: 'Senha incorreta.' });
+  }
+});
+
 function setorEhCredenciado(setor) {
   const row = db.prepare('SELECT 1 FROM setores_credenciados WHERE setor = ?').get(setor.trim());
   return !!row;
@@ -52,7 +76,7 @@ app.delete('/api/setores-credenciados/:setor', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/pedidos', (req, res) => {
+app.get('/api/pedidos', exigirSenha, (req, res) => {
   const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY urgente DESC, criado_em DESC').all();
   res.json(pedidos);
 });
@@ -76,13 +100,13 @@ app.post('/api/pedidos', (req, res) => {
   res.json(novoPedido);
 });
 
-app.patch('/api/pedidos/:id/status', (req, res) => {
+app.patch('/api/pedidos/:id/status', exigirSenha, (req, res) => {
   const { status } = req.body;
   db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, req.params.id);
   res.json({ ok: true });
 });
 
-app.delete('/api/pedidos/:id', (req, res) => {
+app.delete('/api/pedidos/:id', exigirSenha, (req, res) => {
   db.prepare('DELETE FROM pedidos WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -93,9 +117,7 @@ app.post('/api/buscar-preco', async (req, res) => {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({
-      erro: 'Chave da Anthropic não configurada no servidor.'
-    });
+    return res.status(500).json({ erro: 'Chave da Anthropic não configurada no servidor.' });
   }
 
   try {
