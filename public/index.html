@@ -49,7 +49,17 @@
       </form>
     </section>
 
-    <section class="cartao">
+    <section class="cartao" id="login-secao">
+      <h2>Área do comprador</h2>
+      <p class="ajuda">Digite a senha para ver e gerenciar os pedidos.</p>
+      <form id="form-login">
+        <input type="password" id="senha-comprador" placeholder="Senha">
+        <button type="submit" class="btn-primario">Entrar</button>
+      </form>
+      <p id="erro-login" class="erro-login" hidden>Senha incorreta.</p>
+    </section>
+
+    <section class="cartao" id="area-comprador" hidden>
       <h2>Configurar setores credenciados</h2>
       <p class="ajuda">Pedidos de setores credenciados sempre entram como urgentes.</p>
       <form id="form-setor" class="linha-simples">
@@ -59,7 +69,7 @@
       <ul id="lista-setores"></ul>
     </section>
 
-    <section class="cartao">
+    <section class="cartao" id="pedidos-secao" hidden>
       <h2>Pedidos</h2>
       <div id="lista-pedidos"></div>
     </section>
