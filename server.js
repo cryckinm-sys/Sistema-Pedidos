@@ -115,23 +115,20 @@ app.post('/api/buscar-preco', async (req, res) => {
   const { item } = req.body;
   if (!item) return res.status(400).json({ erro: 'Informe o nome do item.' });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ erro: 'Chave da Anthropic não configurada no servidor.' });
+    return res.status(500).json({ erro: 'Chave do OpenRouter não configurada no servidor.' });
   }
 
   try {
-    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+    const resposta = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        model: 'anthropic/claude-3.5-sonnet:online',
         messages: [{
           role: 'user',
           content: `Pesquise no Mercado Livre (mercadolivre.com.br) o menor preço atual para o produto: "${item}". ` +
@@ -143,10 +140,7 @@ app.post('/api/buscar-preco', async (req, res) => {
     });
 
     const dados = await resposta.json();
-    const textoResposta = (dados.content || [])
-      .filter(bloco => bloco.type === 'text')
-      .map(bloco => bloco.text)
-      .join('\n')
+    const textoResposta = (dados.choices?.[0]?.message?.content || '')
       .replace(/```json|```/g, '')
       .trim();
 
