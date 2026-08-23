@@ -111,9 +111,9 @@ app.delete('/api/pedidos/:id', exigirSenha, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/buscar-preco', exigirSenha, async (req, res) => {
-  const { item } = req.body;
-  if (!item) return res.status(400).json({ erro: 'Informe o nome do item.' });
+app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
+  const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+  if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -131,7 +131,7 @@ app.post('/api/buscar-preco', exigirSenha, async (req, res) => {
         model: 'anthropic/claude-3.5-sonnet:online',
         messages: [{
           role: 'user',
-          content: `Pesquise no Mercado Livre (mercadolivre.com.br) o menor preço atual para o produto: "${item}". ` +
+          content: `Pesquise no Mercado Livre (mercadolivre.com.br) o menor preço atual para o produto: "${pedido.item}". ` +
             `Responda SOMENTE em JSON, sem markdown, sem texto antes ou depois, no formato: ` +
             `{"produto": "nome exato encontrado", "preco": 99.90, "link": "https://...", "loja_ou_vendedor": "nome"}. ` +
             `Se não encontrar nada confiável, responda {"erro": "não encontrado"}.`
@@ -160,7 +160,13 @@ app.post('/api/buscar-preco', exigirSenha, async (req, res) => {
 
     if (resultado.erro) {
       resultado.detalhe = textoResposta.slice(0, 500);
+      return res.json(resultado);
     }
+
+    db.prepare(`
+      UPDATE pedidos SET preco_sugerido = ?, link_produto = ?, fonte_preco = ?
+      WHERE id = ?
+    `).run(resultado.preco, resultado.link, resultado.loja_ou_vendedor || null, req.params.id);
 
     res.json(resultado);
   } catch (erro) {
