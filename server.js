@@ -140,15 +140,32 @@ app.post('/api/buscar-preco', async (req, res) => {
     });
 
     const dados = await resposta.json();
+
+    if (!resposta.ok) {
+      console.error('OpenRouter respondeu com erro HTTP:', JSON.stringify(dados));
+      return res.status(500).json({ erro: 'debug_http_' + resposta.status, detalhe: JSON.stringify(dados).slice(0, 500) });
+    }
+
     const textoResposta = (dados.choices?.[0]?.message?.content || '')
       .replace(/```json|```/g, '')
       .trim();
 
-    const resultado = JSON.parse(textoResposta);
+    let resultado;
+    try {
+      resultado = JSON.parse(textoResposta);
+    } catch (erroParse) {
+      console.error('Não consegui interpretar a resposta da IA:', textoResposta);
+      return res.json({ erro: 'debug_parse', detalhe: textoResposta.slice(0, 500) });
+    }
+
+    if (resultado.erro) {
+      resultado.detalhe = textoResposta.slice(0, 500);
+    }
+
     res.json(resultado);
   } catch (erro) {
     console.error('Erro ao buscar preço:', erro);
-    res.status(500).json({ erro: 'Falha ao buscar preço. Tente novamente.' });
+    res.status(500).json({ erro: 'Falha ao buscar preço. Tente novamente.', detalhe: String(erro) });
   }
 });
 
