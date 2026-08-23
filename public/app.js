@@ -1,46 +1,4 @@
-let precoEncontrado = null;
 let senhaComprador = null;
-
-document.getElementById('btn-buscar-preco').addEventListener('click', async () => {
-  const item = document.getElementById('item').value.trim();
-  const caixaResultado = document.getElementById('resultado-preco');
-
-  if (!item) {
-    alert('Digite o nome do item antes de buscar o preço.');
-    return;
-  }
-
-  caixaResultado.hidden = false;
-  caixaResultado.textContent = 'Buscando no Mercado Livre...';
-
-  try {
-    const resp = await fetch('/api/buscar-preco', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-senha-comprador': senhaComprador
-      },
-      body: JSON.stringify({ item })
-    });
-    const dados = await resp.json();
-
-    if (dados.erro) {
-      caixaResultado.textContent = 'DEBUG: ' + (dados.erro || '') + ' | ' + (dados.detalhe || 'sem detalhe');
-      precoEncontrado = null;
-      return;
-    }
-
-    precoEncontrado = dados;
-    caixaResultado.innerHTML = `
-      <strong>${dados.produto}</strong><br>
-      Preço encontrado: R$ ${Number(dados.preco).toFixed(2)}<br>
-      Vendedor: ${dados.loja_ou_vendedor || '—'}<br>
-      <a href="${dados.link}" target="_blank" rel="noopener">Ver no Mercado Livre</a>
-    `;
-  } catch (erro) {
-    caixaResultado.textContent = 'Erro ao buscar preço. Confira se o servidor está rodando e a chave da IA foi configurada.';
-  }
-});
 
 document.getElementById('form-pedido').addEventListener('submit', async (evento) => {
   evento.preventDefault();
@@ -66,8 +24,6 @@ document.getElementById('form-pedido').addEventListener('submit', async (evento)
   }
 
   document.getElementById('form-pedido').reset();
-  document.getElementById('resultado-preco').hidden = true;
-  precoEncontrado = null;
   alert('Pedido criado com sucesso!');
 });
 
@@ -93,7 +49,6 @@ document.getElementById('form-login').addEventListener('submit', async (evento) 
   document.getElementById('login-secao').hidden = true;
   document.getElementById('area-comprador').hidden = false;
   document.getElementById('pedidos-secao').hidden = false;
-  document.getElementById('busca-preco-secao').hidden = false;
 
   carregarSetores();
   carregarPedidos();
@@ -164,10 +119,18 @@ async function carregarPedidos() {
         <strong>${p.item} — ${p.quantidade_pedida} un.</strong>
         <span>${p.solicitante} · Setor: ${p.setor} · Estoque: ${p.quantidade_estoque}</span>
         <span>Status: ${p.status}</span>
-      </div>
-      <div class="pedido-acoes">
         ${p.urgente ? '<span class="selo-urgente">URGENTE</span>' : ''}
+      </div>
+      ${p.preco_sugerido ? `
+        <div class="preco-info">
+          Melhor preço encontrado: R$ ${Number(p.preco_sugerido).toFixed(2)}
+          ${p.link_produto ? `<br><a href="${p.link_produto}" target="_blank" rel="noopener">Ver no Mercado Livre</a>` : ''}
+        </div>
+      ` : `<div class="preco-info-vazio" data-id="${p.id}"></div>`}
+      <div class="pedido-acoes">
+        ${!p.preco_sugerido ? `<button class="btn-buscar-preco-pedido" data-id="${p.id}">Buscar preço</button>` : ''}
         ${p.status !== 'comprado' ? `<button class="btn-comprado" data-id="${p.id}">Marcar comprado</button>` : ''}
+        <button class="btn-excluir" data-id="${p.id}">Excluir</button>
       </div>
     </div>
   `).join('');
@@ -182,6 +145,39 @@ async function carregarPedidos() {
         },
         body: JSON.stringify({ status: 'comprado' })
       });
+      carregarPedidos();
+    });
+  });
+
+  document.querySelectorAll('.btn-excluir').forEach(botao => {
+    botao.addEventListener('click', async () => {
+      if (!confirm('Tem certeza que quer excluir este pedido?')) return;
+      await fetch(`/api/pedidos/${botao.dataset.id}`, {
+        method: 'DELETE',
+        headers: { 'x-senha-comprador': senhaComprador }
+      });
+      carregarPedidos();
+    });
+  });
+
+  document.querySelectorAll('.btn-buscar-preco-pedido').forEach(botao => {
+    botao.addEventListener('click', async () => {
+      botao.textContent = 'Buscando...';
+      botao.disabled = true;
+
+      const resp = await fetch(`/api/pedidos/${botao.dataset.id}/buscar-preco`, {
+        method: 'POST',
+        headers: { 'x-senha-comprador': senhaComprador }
+      });
+      const dados = await resp.json();
+
+      if (dados.erro) {
+        alert('DEBUG: ' + (dados.erro || '') + ' | ' + (dados.detalhe || 'sem detalhe'));
+        botao.textContent = 'Buscar preço';
+        botao.disabled = false;
+        return;
+      }
+
       carregarPedidos();
     });
   });
