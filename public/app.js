@@ -16,13 +16,16 @@ document.getElementById('btn-buscar-preco').addEventListener('click', async () =
   try {
     const resp = await fetch('/api/buscar-preco', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-senha-comprador': senhaComprador
+      },
       body: JSON.stringify({ item })
     });
     const dados = await resp.json();
 
     if (dados.erro) {
-      caixaResultado.textContent = 'Não consegui encontrar um preço confiável para esse item.';
+      caixaResultado.textContent = 'DEBUG: ' + (dados.erro || '') + ' | ' + (dados.detalhe || 'sem detalhe');
       precoEncontrado = null;
       return;
     }
@@ -90,6 +93,7 @@ document.getElementById('form-login').addEventListener('submit', async (evento) 
   document.getElementById('login-secao').hidden = true;
   document.getElementById('area-comprador').hidden = false;
   document.getElementById('pedidos-secao').hidden = false;
+  document.getElementById('busca-preco-secao').hidden = false;
 
   carregarSetores();
   carregarPedidos();
