@@ -111,7 +111,7 @@ app.delete('/api/pedidos/:id', exigirSenha, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/buscar-preco', async (req, res) => {
+app.post('/api/buscar-preco', exigirSenha, async (req, res) => {
   const { item } = req.body;
   if (!item) return res.status(400).json({ erro: 'Informe o nome do item.' });
 
