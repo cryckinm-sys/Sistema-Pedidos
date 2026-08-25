@@ -218,12 +218,17 @@ async function carregarPedidos() {
       </div>
       ${p.preco_sugerido ? `
         <div class="preco-info">
-          Melhor preço encontrado: R$ ${Number(p.preco_sugerido).toFixed(2)}
-          ${p.link_produto ? `<br><a href="${p.link_produto}" target="_blank" rel="noopener">Ver no Mercado Livre</a>` : ''}
+          Preço: R$ ${Number(p.preco_sugerido).toFixed(2)}${p.fonte_preco === 'manual' ? ' (informado manualmente)' : ''}
+          ${p.link_produto ? `<br><a href="${p.link_produto}" target="_blank" rel="noopener">Ver link</a>` : ''}
         </div>
-      ` : ''}
+      ` : `
+        <div class="preco-manual">
+          <input type="number" step="0.01" placeholder="Preço R$" class="input-preco-manual" data-id="${p.id}">
+          <input type="text" placeholder="Link (opcional)" class="input-link-manual" data-id="${p.id}">
+          <button class="btn-salvar-preco-manual" data-id="${p.id}">Salvar preço</button>
+        </div>
+      `}
       <div class="pedido-acoes">
-        ${!p.preco_sugerido ? `<button class="btn-buscar-preco-pedido" data-id="${p.id}">Buscar preço</button>` : ''}
         ${p.status !== 'comprado' ? `<button class="btn-comprado" data-id="${p.id}">Marcar comprado</button>` : ''}
         <button class="btn-excluir" data-id="${p.id}">Excluir</button>
       </div>
@@ -259,25 +264,34 @@ async function carregarPedidos() {
     });
   });
 
-  document.querySelectorAll('.btn-buscar-preco-pedido').forEach(botao => {
+  document.querySelectorAll('.btn-salvar-preco-manual').forEach(botao => {
     botao.addEventListener('click', async () => {
-      botao.textContent = 'Buscando...';
-      botao.disabled = true;
+      const id = botao.dataset.id;
+      const preco = document.querySelector(`.input-preco-manual[data-id="${id}"]`).value;
+      const link = document.querySelector(`.input-link-manual[data-id="${id}"]`).value;
 
-      const resp = await fetch(`/api/pedidos/${botao.dataset.id}/buscar-preco`, {
+      if (!preco) {
+        alert('Digite um preço.');
+        return;
+      }
+
+      const resp = await fetch(`/api/pedidos/${id}/preco-manual`, {
         method: 'POST',
-        headers: { 'x-senha-comprador': senhaComprador }
+        headers: {
+          'Content-Type': 'application/json',
+          'x-senha-comprador': senhaComprador
+        },
+        body: JSON.stringify({ preco, link })
       });
-      const dados = await resp.json();
 
-      if (dados.erro) {
-        alert('Não consegui buscar o preço: ' + (dados.erro || '') + ' | ' + (dados.detalhe || ''));
-        botao.textContent = 'Buscar preço';
-        botao.disabled = false;
+      if (!resp.ok) {
+        alert('Erro ao salvar preço.');
         return;
       }
 
       carregarPedidos();
+      carregarMapa();
+      carregarGastosMensais();
     });
   });
 }
