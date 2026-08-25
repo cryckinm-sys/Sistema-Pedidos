@@ -33,7 +33,6 @@ db.exec(`
   );
 `);
 
-// Coordenadas aproximadas das capitais de cada estado (pra desenhar o mapa)
 const CAPITAIS = {
   AC: [-9.9750, -67.8243], AL: [-9.6498, -35.7089], AP: [0.0349, -51.0694],
   AM: [-3.1190, -60.0217], BA: [-12.9714, -38.5014], CE: [-3.7172, -38.5433],
@@ -70,7 +69,6 @@ app.post('/api/comprador/login', (req, res) => {
   }
 });
 
-// ---------- SETORES ----------
 app.get('/api/setores', (req, res) => {
   const rows = db.prepare('SELECT nome, uf, credenciado FROM setores ORDER BY nome').all();
   res.json(rows);
@@ -99,7 +97,6 @@ function setorEhCredenciado(nomeSetor) {
   return !!(row && row.credenciado);
 }
 
-// ---------- PEDIDOS ----------
 app.get('/api/pedidos', exigirSenha, (req, res) => {
   const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY urgente DESC, criado_em DESC').all();
   res.json(pedidos);
@@ -135,7 +132,6 @@ app.delete('/api/pedidos/:id', exigirSenha, (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- BUSCA DE PREÇO ----------
 app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
   const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
   if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
@@ -197,7 +193,21 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
   }
 });
 
-// ---------- MAPA ----------
+app.post('/api/pedidos/:id/preco-manual', exigirSenha, (req, res) => {
+  const { preco, link } = req.body;
+  if (!preco || isNaN(Number(preco))) {
+    return res.status(400).json({ erro: 'Informe um preço válido.' });
+  }
+
+  db.prepare(`
+    UPDATE pedidos SET preco_sugerido = ?, link_produto = ?, fonte_preco = 'manual'
+    WHERE id = ?
+  `).run(Number(preco), link || null, req.params.id);
+
+  const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+  res.json(pedido);
+});
+
 app.get('/api/mapa', exigirSenha, (req, res) => {
   const linhas = db.prepare(`
     SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
@@ -228,7 +238,6 @@ app.get('/api/mapa', exigirSenha, (req, res) => {
   res.json(resultado);
 });
 
-// ---------- GASTOS MENSAIS ----------
 app.get('/api/gastos-mensais', exigirSenha, (req, res) => {
   const linhas = db.prepare(`
     SELECT strftime('%Y-%m', criado_em) as mes, SUM(preco_sugerido) as total
