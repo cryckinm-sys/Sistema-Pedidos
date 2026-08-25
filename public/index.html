@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistema de Pedidos</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,7 +24,9 @@
 
         <label>
           Setor de destino
-          <input type="text" id="setor" required placeholder="Ex: Manutenção">
+          <select id="setor" required>
+            <option value="">Selecione um setor...</option>
+          </select>
         </label>
 
         <label>
@@ -57,13 +60,33 @@
     </section>
 
     <section class="cartao" id="area-comprador" hidden>
-      <h2>Configurar setores credenciados</h2>
-      <p class="ajuda">Pedidos de setores credenciados sempre entram como urgentes.</p>
-      <form id="form-setor" class="linha-simples">
-        <input type="text" id="novo-setor" placeholder="Nome do setor">
-        <button type="submit">Adicionar</button>
+      <h2>Cadastrar setor</h2>
+      <p class="ajuda">Cadastre setores com o estado (UF) correspondente. Setores credenciados sempre entram como urgentes.</p>
+      <form id="form-setor">
+        <div class="linha-dupla">
+          <input type="text" id="novo-setor-nome" placeholder="Ex: Filial RJ">
+          <select id="novo-setor-uf">
+            <option value="">UF</option>
+          </select>
+        </div>
+        <label class="linha-checkbox">
+          <input type="checkbox" id="novo-setor-credenciado">
+          Setor credenciado (sempre urgente)
+        </label>
+        <button type="submit" class="btn-primario">Salvar setor</button>
       </form>
       <ul id="lista-setores"></ul>
+    </section>
+
+    <section class="cartao" id="mapa-secao" hidden>
+      <h2>Mapa de gastos</h2>
+      <p class="ajuda">Tamanho da bolinha = quanto foi gasto no estado.</p>
+      <div id="mapa" style="height: 320px; border-radius: 10px;"></div>
+    </section>
+
+    <section class="cartao" id="gastos-secao" hidden>
+      <h2>Gastos por mês</h2>
+      <div id="lista-gastos"></div>
     </section>
 
     <section class="cartao" id="pedidos-secao" hidden>
@@ -72,6 +95,7 @@
     </section>
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
