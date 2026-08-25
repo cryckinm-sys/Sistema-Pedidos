@@ -159,3 +159,30 @@ button {
 .pedido-acoes button { font-size: 0.85rem; }
 .btn-excluir { background: #fdeaea; color: #d64545; }
 .preco-info { background: #f7f9ff; border: 1px dashed var(--azul); border-radius: 8px; padding: 8px; font-size: 0.85rem; margin-top: 6px; }
+.pedido { flex-direction: column; align-items: stretch; }
+.pedido-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.pedido-acoes button { font-size: 0.85rem; }
+.btn-excluir { background: #fdeaea; color: #d64545; }
+.preco-info { background: #f7f9ff; border: 1px dashed var(--azul); border-radius: 8px; padding: 8px; font-size: 0.85rem; margin-top: 6px; }
+
+.linha-checkbox { flex-direction: row; align-items: center; gap: 8px; font-size: 0.9rem; }
+.linha-checkbox input { width: auto; }
+
+select {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 1rem;
+  color: var(--texto);
+  background: white;
+}
+
+.gasto-mes {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--borda);
+  font-size: 0.9rem;
+}
+
+.gasto-mes strong { color: var(--azul-escuro); }
