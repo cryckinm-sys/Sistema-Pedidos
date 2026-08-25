@@ -25,10 +25,26 @@ db.exec(`
     criado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS setores_credenciados (
-    setor TEXT PRIMARY KEY
+  CREATE TABLE IF NOT EXISTS setores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL UNIQUE,
+    uf TEXT NOT NULL,
+    credenciado INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+// Coordenadas aproximadas das capitais de cada estado (pra desenhar o mapa)
+const CAPITAIS = {
+  AC: [-9.9750, -67.8243], AL: [-9.6498, -35.7089], AP: [0.0349, -51.0694],
+  AM: [-3.1190, -60.0217], BA: [-12.9714, -38.5014], CE: [-3.7172, -38.5433],
+  DF: [-15.7939, -47.8828], ES: [-20.3155, -40.3128], GO: [-16.6869, -49.2648],
+  MA: [-2.5307, -44.3068], MT: [-15.6014, -56.0979], MS: [-20.4697, -54.6201],
+  MG: [-19.9167, -43.9345], PA: [-1.4558, -48.4902], PB: [-7.1195, -34.8450],
+  PR: [-25.4284, -49.2733], PE: [-8.0476, -34.8770], PI: [-5.0892, -42.8019],
+  RJ: [-22.9068, -43.1729], RN: [-5.7945, -35.2110], RS: [-30.0346, -51.2177],
+  RO: [-8.7619, -63.9039], RR: [2.8235, -60.6758], SC: [-27.5954, -48.5480],
+  SP: [-23.5505, -46.6333], SE: [-10.9472, -37.0731], TO: [-10.1689, -48.3317]
+};
 
 const SENHA_COMPRADOR = process.env.COMPRADOR_SENHA;
 
@@ -54,28 +70,36 @@ app.post('/api/comprador/login', (req, res) => {
   }
 });
 
-function setorEhCredenciado(setor) {
-  const row = db.prepare('SELECT 1 FROM setores_credenciados WHERE setor = ?').get(setor.trim());
-  return !!row;
+// ---------- SETORES ----------
+app.get('/api/setores', (req, res) => {
+  const rows = db.prepare('SELECT nome, uf, credenciado FROM setores ORDER BY nome').all();
+  res.json(rows);
+});
+
+app.post('/api/setores', exigirSenha, (req, res) => {
+  const { nome, uf, credenciado } = req.body;
+  if (!nome || !uf) return res.status(400).json({ erro: 'Informe nome e estado (UF) do setor.' });
+  if (!CAPITAIS[uf.toUpperCase()]) return res.status(400).json({ erro: 'Estado (UF) inválido.' });
+
+  db.prepare(`
+    INSERT INTO setores (nome, uf, credenciado) VALUES (?, ?, ?)
+    ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, credenciado = excluded.credenciado
+  `).run(nome.trim(), uf.toUpperCase(), credenciado ? 1 : 0);
+
+  res.json({ ok: true });
+});
+
+app.delete('/api/setores/:nome', exigirSenha, (req, res) => {
+  db.prepare('DELETE FROM setores WHERE nome = ?').run(req.params.nome);
+  res.json({ ok: true });
+});
+
+function setorEhCredenciado(nomeSetor) {
+  const row = db.prepare('SELECT credenciado FROM setores WHERE nome = ?').get(nomeSetor.trim());
+  return !!(row && row.credenciado);
 }
 
-app.get('/api/setores-credenciados', (req, res) => {
-  const rows = db.prepare('SELECT setor FROM setores_credenciados ORDER BY setor').all();
-  res.json(rows.map(r => r.setor));
-});
-
-app.post('/api/setores-credenciados', (req, res) => {
-  const { setor } = req.body;
-  if (!setor) return res.status(400).json({ erro: 'Informe o nome do setor.' });
-  db.prepare('INSERT OR IGNORE INTO setores_credenciados (setor) VALUES (?)').run(setor.trim());
-  res.json({ ok: true });
-});
-
-app.delete('/api/setores-credenciados/:setor', (req, res) => {
-  db.prepare('DELETE FROM setores_credenciados WHERE setor = ?').run(req.params.setor);
-  res.json({ ok: true });
-});
-
+// ---------- PEDIDOS ----------
 app.get('/api/pedidos', exigirSenha, (req, res) => {
   const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY urgente DESC, criado_em DESC').all();
   res.json(pedidos);
@@ -111,6 +135,7 @@ app.delete('/api/pedidos/:id', exigirSenha, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- BUSCA DE PREÇO ----------
 app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
   const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
   if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
@@ -142,7 +167,6 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
     const dados = await resposta.json();
 
     if (!resposta.ok) {
-      console.error('OpenRouter respondeu com erro HTTP:', JSON.stringify(dados));
       return res.status(500).json({ erro: 'debug_http_' + resposta.status, detalhe: JSON.stringify(dados).slice(0, 500) });
     }
 
@@ -154,7 +178,6 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
     try {
       resultado = JSON.parse(textoResposta);
     } catch (erroParse) {
-      console.error('Não consegui interpretar a resposta da IA:', textoResposta);
       return res.json({ erro: 'debug_parse', detalhe: textoResposta.slice(0, 500) });
     }
 
@@ -170,9 +193,51 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
 
     res.json(resultado);
   } catch (erro) {
-    console.error('Erro ao buscar preço:', erro);
     res.status(500).json({ erro: 'Falha ao buscar preço. Tente novamente.', detalhe: String(erro) });
   }
+});
+
+// ---------- MAPA ----------
+app.get('/api/mapa', exigirSenha, (req, res) => {
+  const linhas = db.prepare(`
+    SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
+    FROM pedidos
+    WHERE status = 'comprado' AND preco_sugerido IS NOT NULL
+    GROUP BY setor
+  `).all();
+
+  const setoresInfo = db.prepare('SELECT nome, uf FROM setores').all();
+  const ufPorSetor = {};
+  setoresInfo.forEach(s => { ufPorSetor[s.nome] = s.uf; });
+
+  const porUf = {};
+  linhas.forEach(l => {
+    const uf = ufPorSetor[l.setor];
+    if (!uf) return;
+    if (!porUf[uf]) porUf[uf] = { uf, total: 0, qtd: 0 };
+    porUf[uf].total += l.total;
+    porUf[uf].qtd += l.qtd;
+  });
+
+  const resultado = Object.values(porUf).map(p => ({
+    ...p,
+    lat: CAPITAIS[p.uf][0],
+    lng: CAPITAIS[p.uf][1]
+  }));
+
+  res.json(resultado);
+});
+
+// ---------- GASTOS MENSAIS ----------
+app.get('/api/gastos-mensais', exigirSenha, (req, res) => {
+  const linhas = db.prepare(`
+    SELECT strftime('%Y-%m', criado_em) as mes, SUM(preco_sugerido) as total
+    FROM pedidos
+    WHERE status = 'comprado' AND preco_sugerido IS NOT NULL
+    GROUP BY mes
+    ORDER BY mes DESC
+  `).all();
+  res.json(linhas);
 });
 
 const PORTA = process.env.PORT || 3000;
