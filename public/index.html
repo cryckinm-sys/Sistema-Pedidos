@@ -61,7 +61,7 @@
 
     <section class="cartao" id="area-comprador" hidden>
       <h2>Cadastrar setor</h2>
-      <p class="ajuda">Cadastre setores com o estado (UF) correspondente. Setores credenciados sempre entram como urgentes.</p>
+      <p class="ajuda">Cadastre setores com cidade e estado. Setores credenciados sempre entram como urgentes.</p>
       <form id="form-setor">
         <div class="linha-dupla">
           <input type="text" id="novo-setor-nome" placeholder="Ex: Filial RJ">
@@ -69,6 +69,7 @@
             <option value="">UF</option>
           </select>
         </div>
+        <input type="text" id="novo-setor-cidade" placeholder="Cidade (Ex: Resende, Volta Redonda)">
         <label class="linha-checkbox">
           <input type="checkbox" id="novo-setor-credenciado">
           Setor credenciado (sempre urgente)
@@ -80,7 +81,7 @@
 
     <section class="cartao" id="mapa-secao" hidden>
       <h2>Mapa de gastos</h2>
-      <p class="ajuda">Tamanho da bolinha = quanto foi gasto no estado.</p>
+      <p class="ajuda">Tamanho da bolinha = quanto foi gasto no local.</p>
       <div id="mapa" style="height: 320px; border-radius: 10px;"></div>
     </section>
 
