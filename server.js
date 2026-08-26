@@ -29,6 +29,9 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nome TEXT NOT NULL UNIQUE,
     uf TEXT NOT NULL,
+    cidade TEXT,
+    lat REAL,
+    lng REAL,
     credenciado INTEGER NOT NULL DEFAULT 0
   );
 `);
@@ -44,6 +47,30 @@ const CAPITAIS = {
   RO: [-8.7619, -63.9039], RR: [2.8235, -60.6758], SC: [-27.5954, -48.5480],
   SP: [-23.5505, -46.6333], SE: [-10.9472, -37.0731], TO: [-10.1689, -48.3317]
 };
+
+async function geocodificarCidade(cidade, uf) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cidade)}&state=${encodeURIComponent(uf)}&country=Brazil&format=json&limit=1`;
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'sistema-pedidos-app/1.0 (contato@exemplo.com)',
+        'Accept-Language': 'pt-BR'
+      }
+    });
+
+    if (!resp.ok) {
+      return { erro: 'http_' + resp.status };
+    }
+
+    const dados = await resp.json();
+    if (dados && dados.length > 0) {
+      return { coordenadas: [Number(dados[0].lat), Number(dados[0].lon)] };
+    }
+    return { erro: 'cidade_nao_encontrada' };
+  } catch (erro) {
+    return { erro: 'excecao_' + String(erro) };
+  }
+}
 
 const SENHA_COMPRADOR = process.env.COMPRADOR_SENHA;
 
@@ -70,21 +97,35 @@ app.post('/api/comprador/login', (req, res) => {
 });
 
 app.get('/api/setores', (req, res) => {
-  const rows = db.prepare('SELECT nome, uf, credenciado FROM setores ORDER BY nome').all();
+  const rows = db.prepare('SELECT nome, uf, cidade, credenciado FROM setores ORDER BY nome').all();
   res.json(rows);
 });
 
-app.post('/api/setores', exigirSenha, (req, res) => {
-  const { nome, uf, credenciado } = req.body;
+app.post('/api/setores', exigirSenha, async (req, res) => {
+  const { nome, uf, cidade, credenciado } = req.body;
   if (!nome || !uf) return res.status(400).json({ erro: 'Informe nome e estado (UF) do setor.' });
-  if (!CAPITAIS[uf.toUpperCase()]) return res.status(400).json({ erro: 'Estado (UF) inválido.' });
+  const ufMaiuscula = uf.toUpperCase();
+  if (!CAPITAIS[ufMaiuscula]) return res.status(400).json({ erro: 'Estado (UF) inválido.' });
+
+  let coordenadas = CAPITAIS[ufMaiuscula];
+  let debugGeocode = 'usou_capital_padrao';
+
+  if (cidade && cidade.trim()) {
+    const resultado = await geocodificarCidade(cidade.trim(), ufMaiuscula);
+    if (resultado.coordenadas) {
+      coordenadas = resultado.coordenadas;
+      debugGeocode = 'encontrou_cidade';
+    } else {
+      debugGeocode = 'falhou_geocode_' + resultado.erro;
+    }
+  }
 
   db.prepare(`
-    INSERT INTO setores (nome, uf, credenciado) VALUES (?, ?, ?)
-    ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, credenciado = excluded.credenciado
-  `).run(nome.trim(), uf.toUpperCase(), credenciado ? 1 : 0);
+    INSERT INTO setores (nome, uf, cidade, lat, lng, credenciado) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, cidade = excluded.cidade, lat = excluded.lat, lng = excluded.lng, credenciado = excluded.credenciado
+  `).run(nome.trim(), ufMaiuscula, cidade ? cidade.trim() : null, coordenadas[0], coordenadas[1], credenciado ? 1 : 0);
 
-  res.json({ ok: true });
+  res.json({ ok: true, debug: debugGeocode, lat: coordenadas[0], lng: coordenadas[1] });
 });
 
 app.delete('/api/setores/:nome', exigirSenha, (req, res) => {
@@ -216,26 +257,23 @@ app.get('/api/mapa', exigirSenha, (req, res) => {
     GROUP BY setor
   `).all();
 
-  const setoresInfo = db.prepare('SELECT nome, uf FROM setores').all();
-  const ufPorSetor = {};
-  setoresInfo.forEach(s => { ufPorSetor[s.nome] = s.uf; });
+  const setoresInfo = db.prepare('SELECT nome, uf, cidade, lat, lng FROM setores').all();
+  const infoPorSetor = {};
+  setoresInfo.forEach(s => { infoPorSetor[s.nome] = s; });
 
-  const porUf = {};
+  const porLocal = {};
   linhas.forEach(l => {
-    const uf = ufPorSetor[l.setor];
-    if (!uf) return;
-    if (!porUf[uf]) porUf[uf] = { uf, total: 0, qtd: 0 };
-    porUf[uf].total += l.total;
-    porUf[uf].qtd += l.qtd;
+    const info = infoPorSetor[l.setor];
+    if (!info || info.lat === null) return;
+    const chave = `${info.lat},${info.lng}`;
+    if (!porLocal[chave]) {
+      porLocal[chave] = { uf: info.uf, cidade: info.cidade, lat: info.lat, lng: info.lng, total: 0, qtd: 0 };
+    }
+    porLocal[chave].total += l.total;
+    porLocal[chave].qtd += l.qtd;
   });
 
-  const resultado = Object.values(porUf).map(p => ({
-    ...p,
-    lat: CAPITAIS[p.uf][0],
-    lng: CAPITAIS[p.uf][1]
-  }));
-
-  res.json(resultado);
+  res.json(Object.values(porLocal));
 });
 
 app.get('/api/gastos-mensais', exigirSenha, (req, res) => {
