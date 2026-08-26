@@ -250,12 +250,21 @@ app.post('/api/pedidos/:id/preco-manual', exigirSenha, (req, res) => {
 });
 
 app.get('/api/mapa', exigirSenha, (req, res) => {
-  const linhas = db.prepare(`
-    SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
-    FROM pedidos
-    WHERE status = 'comprado' AND preco_sugerido IS NOT NULL
-    GROUP BY setor
-  `).all();
+  const mes = req.query.mes;
+
+  const linhas = mes
+    ? db.prepare(`
+        SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
+        FROM pedidos
+        WHERE status = 'comprado' AND preco_sugerido IS NOT NULL AND strftime('%Y-%m', criado_em) = ?
+        GROUP BY setor
+      `).all(mes)
+    : db.prepare(`
+        SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
+        FROM pedidos
+        WHERE status = 'comprado' AND preco_sugerido IS NOT NULL
+        GROUP BY setor
+      `).all();
 
   const setoresInfo = db.prepare('SELECT nome, uf, cidade, lat, lng FROM setores').all();
   const infoPorSetor = {};
