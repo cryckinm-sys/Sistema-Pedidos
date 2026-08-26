@@ -81,8 +81,11 @@ document.getElementById('form-login').addEventListener('submit', async (evento) 
 
   carregarSetoresCadastrados();
   carregarPedidos();
-  carregarMapa();
   carregarGastosMensais();
+});
+
+document.getElementById('filtro-mes-mapa').addEventListener('change', (evento) => {
+  carregarMapa(evento.target.value);
 });
 
 document.getElementById('form-setor').addEventListener('submit', async (evento) => {
@@ -101,7 +104,7 @@ document.getElementById('form-setor').addEventListener('submit', async (evento) 
   botao.textContent = 'Salvando...';
   botao.disabled = true;
 
-  const resp = await fetch('/api/setores', {
+  await fetch('/api/setores', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -109,9 +112,6 @@ document.getElementById('form-setor').addEventListener('submit', async (evento) 
     },
     body: JSON.stringify({ nome, uf, cidade, credenciado })
   });
-  const dados = await resp.json();
-
-  alert('DEBUG mapa: ' + dados.debug + ' | lat: ' + dados.lat + ' | lng: ' + dados.lng);
 
   botao.textContent = 'Salvar setor';
   botao.disabled = false;
@@ -146,8 +146,9 @@ async function carregarSetoresCadastrados() {
   });
 }
 
-async function carregarMapa() {
-  const resp = await fetch('/api/mapa', {
+async function carregarMapa(mes) {
+  const url = mes ? `/api/mapa?mes=${encodeURIComponent(mes)}` : '/api/mapa';
+  const resp = await fetch(url, {
     headers: { 'x-senha-comprador': senhaComprador }
   });
   if (!resp.ok) return;
@@ -189,6 +190,10 @@ async function carregarGastosMensais() {
   if (!resp.ok) return;
   const dados = await resp.json();
   const lista = document.getElementById('lista-gastos');
+  const filtroMes = document.getElementById('filtro-mes-mapa');
+
+  filtroMes.innerHTML = '<option value="">Todos os meses</option>' +
+    dados.map(d => `<option value="${d.mes}">${d.mes}</option>`).join('');
 
   lista.innerHTML = dados.length
     ? dados.map(d => `
@@ -198,6 +203,8 @@ async function carregarGastosMensais() {
         </div>
       `).join('')
     : '<p class="vazio">Nenhum gasto registrado ainda.</p>';
+
+  carregarMapa('');
 }
 
 async function carregarPedidos() {
@@ -256,7 +263,6 @@ async function carregarPedidos() {
         body: JSON.stringify({ status: 'comprado' })
       });
       carregarPedidos();
-      carregarMapa();
       carregarGastosMensais();
     });
   });
@@ -269,7 +275,6 @@ async function carregarPedidos() {
         headers: { 'x-senha-comprador': senhaComprador }
       });
       carregarPedidos();
-      carregarMapa();
       carregarGastosMensais();
     });
   });
@@ -300,7 +305,6 @@ async function carregarPedidos() {
       }
 
       carregarPedidos();
-      carregarMapa();
       carregarGastosMensais();
     });
   });
