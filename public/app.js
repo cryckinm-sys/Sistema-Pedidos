@@ -89,6 +89,7 @@ document.getElementById('form-setor').addEventListener('submit', async (evento) 
   evento.preventDefault();
   const nome = document.getElementById('novo-setor-nome').value.trim();
   const uf = document.getElementById('novo-setor-uf').value;
+  const cidade = document.getElementById('novo-setor-cidade').value.trim();
   const credenciado = document.getElementById('novo-setor-credenciado').checked;
 
   if (!nome || !uf) {
@@ -96,15 +97,24 @@ document.getElementById('form-setor').addEventListener('submit', async (evento) 
     return;
   }
 
-  await fetch('/api/setores', {
+  const botao = evento.target.querySelector('button[type="submit"]');
+  botao.textContent = 'Salvando...';
+  botao.disabled = true;
+
+  const resp = await fetch('/api/setores', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-senha-comprador': senhaComprador
     },
-    body: JSON.stringify({ nome, uf, credenciado })
+    body: JSON.stringify({ nome, uf, cidade, credenciado })
   });
+  const dados = await resp.json();
 
+  alert('DEBUG mapa: ' + dados.debug + ' | lat: ' + dados.lat + ' | lng: ' + dados.lng);
+
+  botao.textContent = 'Salvar setor';
+  botao.disabled = false;
   document.getElementById('form-setor').reset();
   carregarSetoresCadastrados();
   carregarSetoresParaPedido();
@@ -118,7 +128,7 @@ async function carregarSetoresCadastrados() {
   lista.innerHTML = setores.length
     ? setores.map(s => `
         <li>
-          ${s.nome} (${s.uf})${s.credenciado ? ' — urgente' : ''}
+          ${s.nome} — ${s.cidade ? s.cidade + ', ' : ''}${s.uf}${s.credenciado ? ' — urgente' : ''}
           <button data-setor="${s.nome}" class="remover-setor" title="Remover">×</button>
         </li>
       `).join('')
@@ -167,7 +177,7 @@ async function carregarMapa() {
       weight: 1,
       fillOpacity: 0.6
     })
-      .bindPopup(`<strong>${d.uf}</strong><br>Total: R$ ${d.total.toFixed(2)}<br>${d.qtd} pedido(s)`)
+      .bindPopup(`<strong>${d.cidade ? d.cidade + ' - ' : ''}${d.uf}</strong><br>Total: R$ ${d.total.toFixed(2)}<br>${d.qtd} pedido(s)`)
       .addTo(mapaLeaflet);
   });
 }
