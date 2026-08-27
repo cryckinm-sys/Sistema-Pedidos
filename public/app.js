@@ -120,6 +120,57 @@ document.getElementById('form-setor').addEventListener('submit', async (evento) 
   carregarSetoresParaPedido();
 });
 
+document.getElementById('btn-importar-csv').addEventListener('click', async () => {
+  const arquivoInput = document.getElementById('arquivo-csv');
+  const resultadoBox = document.getElementById('resultado-importacao');
+  const botao = document.getElementById('btn-importar-csv');
+
+  if (!arquivoInput.files || !arquivoInput.files[0]) {
+    alert('Escolha um arquivo .csv primeiro.');
+    return;
+  }
+
+  const arquivo = arquivoInput.files[0];
+  const texto = await arquivo.text();
+
+  botao.textContent = 'Importando... (pode demorar um pouco)';
+  botao.disabled = true;
+  resultadoBox.hidden = true;
+
+  try {
+    const resp = await fetch('/api/setores/importar', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-senha-comprador': senhaComprador
+      },
+      body: JSON.stringify({ csv: texto })
+    });
+
+    const dados = await resp.json();
+
+    if (!resp.ok) {
+      resultadoBox.hidden = false;
+      resultadoBox.textContent = 'Erro: ' + (dados.erro || 'falha desconhecida');
+      return;
+    }
+
+    resultadoBox.hidden = false;
+    resultadoBox.textContent = `Importados: ${dados.importados} setor(es).` +
+      (dados.falhas && dados.falhas.length ? ` Falhas: ${dados.falhas.length} (linha(s) ${dados.falhas.map(f => f.linha).join(', ')})` : '');
+
+    arquivoInput.value = '';
+    carregarSetoresCadastrados();
+    carregarSetoresParaPedido();
+  } catch (erro) {
+    resultadoBox.hidden = false;
+    resultadoBox.textContent = 'Erro ao importar: ' + String(erro);
+  } finally {
+    botao.textContent = 'Importar arquivo';
+    botao.disabled = false;
+  }
+});
+
 async function carregarSetoresCadastrados() {
   const resp = await fetch('/api/setores');
   const setores = await resp.json();
