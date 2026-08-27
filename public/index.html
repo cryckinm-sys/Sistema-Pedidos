@@ -76,6 +76,18 @@
         </label>
         <button type="submit" class="btn-primario">Salvar setor</button>
       </form>
+
+      <div class="importar-csv">
+        <h3>Importar vários setores de uma vez</h3>
+        <p class="ajuda">
+          Arquivo .csv com as colunas: <strong>nome,uf,cidade,credenciado</strong><br>
+          Exemplo: <code>Filial RJ,RJ,Resende,sim</code>
+        </p>
+        <input type="file" id="arquivo-csv" accept=".csv">
+        <button type="button" id="btn-importar-csv">Importar arquivo</button>
+        <p id="resultado-importacao" class="resultado-importacao" hidden></p>
+      </div>
+
       <ul id="lista-setores"></ul>
     </section>
 
