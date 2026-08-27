@@ -53,6 +53,10 @@ const CAPITAIS = {
   SP: [-23.5505, -46.6333], SE: [-10.9472, -37.0731], TO: [-10.1689, -48.3317]
 };
 
+function aguardar(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function geocodificarCidade(cidade, uf) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cidade)}&state=${encodeURIComponent(uf)}&country=Brazil&format=json&limit=1`;
@@ -71,6 +75,27 @@ async function geocodificarCidade(cidade, uf) {
   } catch (erro) {
     return { erro: 'excecao_' + String(erro) };
   }
+}
+
+async function salvarSetor(nome, uf, cidade, credenciado) {
+  const ufMaiuscula = uf.toUpperCase();
+  if (!CAPITAIS[ufMaiuscula]) return { erro: 'uf_invalida' };
+
+  let coordenadas = CAPITAIS[ufMaiuscula];
+  if (cidade && cidade.trim()) {
+    const resultado = await geocodificarCidade(cidade.trim(), ufMaiuscula);
+    if (resultado.coordenadas) coordenadas = resultado.coordenadas;
+  }
+
+  await db.execute({
+    sql: `
+      INSERT INTO setores (nome, uf, cidade, lat, lng, credenciado) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, cidade = excluded.cidade, lat = excluded.lat, lng = excluded.lng, credenciado = excluded.credenciado
+    `,
+    args: [nome.trim(), ufMaiuscula, cidade ? cidade.trim() : null, coordenadas[0], coordenadas[1], credenciado ? 1 : 0]
+  });
+
+  return { ok: true };
 }
 
 const SENHA_COMPRADOR = process.env.COMPRADOR_SENHA;
@@ -105,31 +130,49 @@ app.get('/api/setores', async (req, res) => {
 app.post('/api/setores', exigirSenha, async (req, res) => {
   const { nome, uf, cidade, credenciado } = req.body;
   if (!nome || !uf) return res.status(400).json({ erro: 'Informe nome e estado (UF) do setor.' });
-  const ufMaiuscula = uf.toUpperCase();
-  if (!CAPITAIS[ufMaiuscula]) return res.status(400).json({ erro: 'Estado (UF) inválido.' });
 
-  let coordenadas = CAPITAIS[ufMaiuscula];
-  let debugGeocode = 'usou_capital_padrao';
+  const resultado = await salvarSetor(nome, uf, cidade, credenciado);
+  if (resultado.erro) return res.status(400).json({ erro: 'Estado (UF) inválido.' });
 
-  if (cidade && cidade.trim()) {
-    const resultado = await geocodificarCidade(cidade.trim(), ufMaiuscula);
-    if (resultado.coordenadas) {
-      coordenadas = resultado.coordenadas;
-      debugGeocode = 'encontrou_cidade';
-    } else {
-      debugGeocode = 'falhou_geocode_' + resultado.erro;
-    }
+  res.json({ ok: true });
+});
+
+app.post('/api/setores/importar', exigirSenha, async (req, res) => {
+  const { csv } = req.body;
+  if (!csv || !csv.trim()) return res.status(400).json({ erro: 'Nenhum conteúdo enviado.' });
+
+  const linhas = csv.trim().split('\n').map(l => l.trim()).filter(l => l);
+
+  let comecoDados = 0;
+  if (linhas[0] && linhas[0].toLowerCase().includes('nome')) {
+    comecoDados = 1;
   }
 
-  await db.execute({
-    sql: `
-      INSERT INTO setores (nome, uf, cidade, lat, lng, credenciado) VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, cidade = excluded.cidade, lat = excluded.lat, lng = excluded.lng, credenciado = excluded.credenciado
-    `,
-    args: [nome.trim(), ufMaiuscula, cidade ? cidade.trim() : null, coordenadas[0], coordenadas[1], credenciado ? 1 : 0]
-  });
+  const importados = [];
+  const falhas = [];
 
-  res.json({ ok: true, debug: debugGeocode, lat: coordenadas[0], lng: coordenadas[1] });
+  for (let i = comecoDados; i < linhas.length; i++) {
+    const colunas = linhas[i].split(',').map(c => c.trim());
+    const [nome, uf, cidade, credenciadoTexto] = colunas;
+
+    if (!nome || !uf) {
+      falhas.push({ linha: i + 1, motivo: 'faltando nome ou UF' });
+      continue;
+    }
+
+    const credenciado = ['sim', 'true', '1', 'yes'].includes((credenciadoTexto || '').toLowerCase());
+
+    const resultado = await salvarSetor(nome, uf, cidade, credenciado);
+    if (resultado.erro) {
+      falhas.push({ linha: i + 1, motivo: resultado.erro });
+    } else {
+      importados.push(nome);
+    }
+
+    await aguardar(1100);
+  }
+
+  res.json({ ok: true, importados: importados.length, falhas });
 });
 
 app.delete('/api/setores/:nome', exigirSenha, async (req, res) => {
