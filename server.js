@@ -1,40 +1,45 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const Database = require('better-sqlite3');
+const { createClient } = require('@libsql/client');
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const db = new Database(path.join(__dirname, 'pedidos.db'));
+const db = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN
+});
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS pedidos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    solicitante TEXT NOT NULL,
-    setor TEXT NOT NULL,
-    item TEXT NOT NULL,
-    quantidade_estoque INTEGER NOT NULL,
-    quantidade_pedida INTEGER NOT NULL,
-    urgente INTEGER NOT NULL DEFAULT 0,
-    preco_sugerido REAL,
-    link_produto TEXT,
-    fonte_preco TEXT,
-    status TEXT NOT NULL DEFAULT 'aberto',
-    criado_em TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+async function iniciarBanco() {
+  await db.executeMultiple(`
+    CREATE TABLE IF NOT EXISTS pedidos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      solicitante TEXT NOT NULL,
+      setor TEXT NOT NULL,
+      item TEXT NOT NULL,
+      quantidade_estoque INTEGER NOT NULL,
+      quantidade_pedida INTEGER NOT NULL,
+      urgente INTEGER NOT NULL DEFAULT 0,
+      preco_sugerido REAL,
+      link_produto TEXT,
+      fonte_preco TEXT,
+      status TEXT NOT NULL DEFAULT 'aberto',
+      criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+    );
 
-  CREATE TABLE IF NOT EXISTS setores (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL UNIQUE,
-    uf TEXT NOT NULL,
-    cidade TEXT,
-    lat REAL,
-    lng REAL,
-    credenciado INTEGER NOT NULL DEFAULT 0
-  );
-`);
+    CREATE TABLE IF NOT EXISTS setores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL UNIQUE,
+      uf TEXT NOT NULL,
+      cidade TEXT,
+      lat REAL,
+      lng REAL,
+      credenciado INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+}
 
 const CAPITAIS = {
   AC: [-9.9750, -67.8243], AL: [-9.6498, -35.7089], AP: [0.0349, -51.0694],
@@ -57,11 +62,7 @@ async function geocodificarCidade(cidade, uf) {
         'Accept-Language': 'pt-BR'
       }
     });
-
-    if (!resp.ok) {
-      return { erro: 'http_' + resp.status };
-    }
-
+    if (!resp.ok) return { erro: 'http_' + resp.status };
     const dados = await resp.json();
     if (dados && dados.length > 0) {
       return { coordenadas: [Number(dados[0].lat), Number(dados[0].lon)] };
@@ -96,9 +97,9 @@ app.post('/api/comprador/login', (req, res) => {
   }
 });
 
-app.get('/api/setores', (req, res) => {
-  const rows = db.prepare('SELECT nome, uf, cidade, credenciado FROM setores ORDER BY nome').all();
-  res.json(rows);
+app.get('/api/setores', async (req, res) => {
+  const resultado = await db.execute('SELECT nome, uf, cidade, credenciado FROM setores ORDER BY nome');
+  res.json(resultado.rows);
 });
 
 app.post('/api/setores', exigirSenha, async (req, res) => {
@@ -120,30 +121,33 @@ app.post('/api/setores', exigirSenha, async (req, res) => {
     }
   }
 
-  db.prepare(`
-    INSERT INTO setores (nome, uf, cidade, lat, lng, credenciado) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, cidade = excluded.cidade, lat = excluded.lat, lng = excluded.lng, credenciado = excluded.credenciado
-  `).run(nome.trim(), ufMaiuscula, cidade ? cidade.trim() : null, coordenadas[0], coordenadas[1], credenciado ? 1 : 0);
+  await db.execute({
+    sql: `
+      INSERT INTO setores (nome, uf, cidade, lat, lng, credenciado) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(nome) DO UPDATE SET uf = excluded.uf, cidade = excluded.cidade, lat = excluded.lat, lng = excluded.lng, credenciado = excluded.credenciado
+    `,
+    args: [nome.trim(), ufMaiuscula, cidade ? cidade.trim() : null, coordenadas[0], coordenadas[1], credenciado ? 1 : 0]
+  });
 
   res.json({ ok: true, debug: debugGeocode, lat: coordenadas[0], lng: coordenadas[1] });
 });
 
-app.delete('/api/setores/:nome', exigirSenha, (req, res) => {
-  db.prepare('DELETE FROM setores WHERE nome = ?').run(req.params.nome);
+app.delete('/api/setores/:nome', exigirSenha, async (req, res) => {
+  await db.execute({ sql: 'DELETE FROM setores WHERE nome = ?', args: [req.params.nome] });
   res.json({ ok: true });
 });
 
-function setorEhCredenciado(nomeSetor) {
-  const row = db.prepare('SELECT credenciado FROM setores WHERE nome = ?').get(nomeSetor.trim());
-  return !!(row && row.credenciado);
+async function setorEhCredenciado(nomeSetor) {
+  const resultado = await db.execute({ sql: 'SELECT credenciado FROM setores WHERE nome = ?', args: [nomeSetor.trim()] });
+  return !!(resultado.rows[0] && Number(resultado.rows[0].credenciado));
 }
 
-app.get('/api/pedidos', exigirSenha, (req, res) => {
-  const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY urgente DESC, criado_em DESC').all();
-  res.json(pedidos);
+app.get('/api/pedidos', exigirSenha, async (req, res) => {
+  const resultado = await db.execute('SELECT * FROM pedidos ORDER BY urgente DESC, criado_em DESC');
+  res.json(resultado.rows);
 });
 
-app.post('/api/pedidos', (req, res) => {
+app.post('/api/pedidos', async (req, res) => {
   const { solicitante, setor, item, quantidade_estoque, quantidade_pedida } = req.body;
 
   if (!solicitante || !setor || !item || quantidade_estoque === undefined || !quantidade_pedida) {
@@ -151,30 +155,39 @@ app.post('/api/pedidos', (req, res) => {
   }
 
   const estoqueBaixo = Number(quantidade_estoque) < Number(quantidade_pedida) * 0.2;
-  const urgente = setorEhCredenciado(setor) || estoqueBaixo;
+  const credenciado = await setorEhCredenciado(setor);
+  const urgente = credenciado || estoqueBaixo;
 
-  const info = db.prepare(`
-    INSERT INTO pedidos (solicitante, setor, item, quantidade_estoque, quantidade_pedida, urgente)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(solicitante, setor, item, quantidade_estoque, quantidade_pedida, urgente ? 1 : 0);
+  const info = await db.execute({
+    sql: `
+      INSERT INTO pedidos (solicitante, setor, item, quantidade_estoque, quantidade_pedida, urgente)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    args: [solicitante, setor, item, quantidade_estoque, quantidade_pedida, urgente ? 1 : 0]
+  });
 
-  const novoPedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(info.lastInsertRowid);
-  res.json(novoPedido);
+  const novoPedido = await db.execute({
+    sql: 'SELECT * FROM pedidos WHERE id = ?',
+    args: [Number(info.lastInsertRowid)]
+  });
+
+  res.json(novoPedido.rows[0]);
 });
 
-app.patch('/api/pedidos/:id/status', exigirSenha, (req, res) => {
+app.patch('/api/pedidos/:id/status', exigirSenha, async (req, res) => {
   const { status } = req.body;
-  db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, req.params.id);
+  await db.execute({ sql: 'UPDATE pedidos SET status = ? WHERE id = ?', args: [status, req.params.id] });
   res.json({ ok: true });
 });
 
-app.delete('/api/pedidos/:id', exigirSenha, (req, res) => {
-  db.prepare('DELETE FROM pedidos WHERE id = ?').run(req.params.id);
+app.delete('/api/pedidos/:id', exigirSenha, async (req, res) => {
+  await db.execute({ sql: 'DELETE FROM pedidos WHERE id = ?', args: [req.params.id] });
   res.json({ ok: true });
 });
 
 app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
-  const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+  const resultadoPedido = await db.execute({ sql: 'SELECT * FROM pedidos WHERE id = ?', args: [req.params.id] });
+  const pedido = resultadoPedido.rows[0];
   if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -223,10 +236,10 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
       return res.json(resultado);
     }
 
-    db.prepare(`
-      UPDATE pedidos SET preco_sugerido = ?, link_produto = ?, fonte_preco = ?
-      WHERE id = ?
-    `).run(resultado.preco, resultado.link, resultado.loja_ou_vendedor || null, req.params.id);
+    await db.execute({
+      sql: `UPDATE pedidos SET preco_sugerido = ?, link_produto = ?, fonte_preco = ? WHERE id = ?`,
+      args: [resultado.preco, resultado.link, resultado.loja_ou_vendedor || null, req.params.id]
+    });
 
     res.json(resultado);
   } catch (erro) {
@@ -234,69 +247,76 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
   }
 });
 
-app.post('/api/pedidos/:id/preco-manual', exigirSenha, (req, res) => {
+app.post('/api/pedidos/:id/preco-manual', exigirSenha, async (req, res) => {
   const { preco, link } = req.body;
   if (!preco || isNaN(Number(preco))) {
     return res.status(400).json({ erro: 'Informe um preço válido.' });
   }
 
-  db.prepare(`
-    UPDATE pedidos SET preco_sugerido = ?, link_produto = ?, fonte_preco = 'manual'
-    WHERE id = ?
-  `).run(Number(preco), link || null, req.params.id);
+  await db.execute({
+    sql: `UPDATE pedidos SET preco_sugerido = ?, link_produto = ?, fonte_preco = 'manual' WHERE id = ?`,
+    args: [Number(preco), link || null, req.params.id]
+  });
 
-  const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
-  res.json(pedido);
+  const resultado = await db.execute({ sql: 'SELECT * FROM pedidos WHERE id = ?', args: [req.params.id] });
+  res.json(resultado.rows[0]);
 });
 
-app.get('/api/mapa', exigirSenha, (req, res) => {
+app.get('/api/mapa', exigirSenha, async (req, res) => {
   const mes = req.query.mes;
 
   const linhas = mes
-    ? db.prepare(`
-        SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
-        FROM pedidos
-        WHERE status = 'comprado' AND preco_sugerido IS NOT NULL AND strftime('%Y-%m', criado_em) = ?
-        GROUP BY setor
-      `).all(mes)
-    : db.prepare(`
+    ? await db.execute({
+        sql: `
+          SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
+          FROM pedidos
+          WHERE status = 'comprado' AND preco_sugerido IS NOT NULL AND strftime('%Y-%m', criado_em) = ?
+          GROUP BY setor
+        `,
+        args: [mes]
+      })
+    : await db.execute(`
         SELECT setor, SUM(preco_sugerido) as total, COUNT(*) as qtd
         FROM pedidos
         WHERE status = 'comprado' AND preco_sugerido IS NOT NULL
         GROUP BY setor
-      `).all();
+      `);
 
-  const setoresInfo = db.prepare('SELECT nome, uf, cidade, lat, lng FROM setores').all();
+  const setoresInfo = await db.execute('SELECT nome, uf, cidade, lat, lng FROM setores');
   const infoPorSetor = {};
-  setoresInfo.forEach(s => { infoPorSetor[s.nome] = s; });
+  setoresInfo.rows.forEach(s => { infoPorSetor[s.nome] = s; });
 
   const porLocal = {};
-  linhas.forEach(l => {
+  linhas.rows.forEach(l => {
     const info = infoPorSetor[l.setor];
     if (!info || info.lat === null) return;
     const chave = `${info.lat},${info.lng}`;
     if (!porLocal[chave]) {
-      porLocal[chave] = { uf: info.uf, cidade: info.cidade, lat: info.lat, lng: info.lng, total: 0, qtd: 0 };
+      porLocal[chave] = { uf: info.uf, cidade: info.cidade, lat: Number(info.lat), lng: Number(info.lng), total: 0, qtd: 0 };
     }
-    porLocal[chave].total += l.total;
-    porLocal[chave].qtd += l.qtd;
+    porLocal[chave].total += Number(l.total);
+    porLocal[chave].qtd += Number(l.qtd);
   });
 
   res.json(Object.values(porLocal));
 });
 
-app.get('/api/gastos-mensais', exigirSenha, (req, res) => {
-  const linhas = db.prepare(`
+app.get('/api/gastos-mensais', exigirSenha, async (req, res) => {
+  const resultado = await db.execute(`
     SELECT strftime('%Y-%m', criado_em) as mes, SUM(preco_sugerido) as total
     FROM pedidos
     WHERE status = 'comprado' AND preco_sugerido IS NOT NULL
     GROUP BY mes
     ORDER BY mes DESC
-  `).all();
-  res.json(linhas);
+  `);
+  res.json(resultado.rows);
 });
 
 const PORTA = process.env.PORT || 3000;
-app.listen(PORTA, () => {
-  console.log(`Sistema de pedidos rodando em http://localhost:${PORTA}`);
+iniciarBanco().then(() => {
+  app.listen(PORTA, () => {
+    console.log(`Sistema de pedidos rodando em http://localhost:${PORTA}`);
+  });
+}).catch(erro => {
+  console.error('Erro ao iniciar banco de dados:', erro);
 });
