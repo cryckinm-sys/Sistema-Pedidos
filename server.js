@@ -206,10 +206,11 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
         model: 'anthropic/claude-3.5-sonnet:online',
         messages: [{
           role: 'user',
-          content: `Pesquise no Mercado Livre (mercadolivre.com.br) o menor preço atual para o produto: "${pedido.item}". ` +
+          content: `Pesquise na internet (lojas online brasileiras como Mercado Livre, Amazon Brasil, Magazine Luiza, Americanas, Shopee, AliExpress, ou sites de fabricantes/distribuidores) o menor preço atual para o produto: "${pedido.item}". ` +
+            `Compare pelo menos 2 ou 3 lojas diferentes antes de responder, e escolha o menor preço com frete disponível para o Brasil. ` +
             `Responda SOMENTE em JSON, sem markdown, sem texto antes ou depois, no formato: ` +
-            `{"produto": "nome exato encontrado", "preco": 99.90, "link": "https://...", "loja_ou_vendedor": "nome"}. ` +
-            `Se não encontrar nada confiável, responda {"erro": "não encontrado"}.`
+            `{"produto": "nome exato encontrado", "preco": 99.90, "link": "https://...", "loja_ou_vendedor": "nome da loja"}. ` +
+            `Se não encontrar nada confiável em nenhuma loja, responda {"erro": "não encontrado"}.`
         }]
       })
     });
