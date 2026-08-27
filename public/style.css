@@ -186,3 +186,27 @@ select {
 }
 
 .gasto-mes strong { color: var(--azul-escuro); }
+.importar-csv {
+  border-top: 1px solid var(--borda);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.importar-csv h3 { font-size: 0.95rem; margin: 0 0 6px; }
+.importar-csv code {
+  background: #f0f2f8;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+#arquivo-csv { margin: 8px 0; display: block; }
+
+.resultado-importacao {
+  background: #f7f9ff;
+  border: 1px solid var(--azul);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
