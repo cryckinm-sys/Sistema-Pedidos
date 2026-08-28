@@ -1,5 +1,6 @@
 let senhaComprador = null;
 let mapaLeaflet = null;
+let intervaloAtualizacao = null;
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -82,6 +83,11 @@ document.getElementById('form-login').addEventListener('submit', async (evento) 
   carregarSetoresCadastrados();
   carregarPedidos();
   carregarGastosMensais();
+
+  if (intervaloAtualizacao) clearInterval(intervaloAtualizacao);
+  intervaloAtualizacao = setInterval(() => {
+    carregarPedidos();
+  }, 10000);
 });
 
 document.getElementById('filtro-mes-mapa').addEventListener('change', (evento) => {
