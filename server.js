@@ -233,30 +233,31 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
   const pedido = resultadoPedido.rows[0];
   if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ erro: 'Chave do OpenRouter não configurada no servidor.' });
+    return res.status(500).json({ erro: 'Chave do Gemini não configurada no servidor.' });
   }
 
   try {
-    const resposta = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'anthropic/claude-3.5-sonnet:online',
-        messages: [{
-          role: 'user',
-          content: `Pesquise na internet (lojas online brasileiras como Mercado Livre, Amazon Brasil, Magazine Luiza, Americanas, Shopee, AliExpress, ou sites de fabricantes/distribuidores) o menor preço atual para o produto: "${pedido.item}". ` +
-            `Compare pelo menos 2 ou 3 lojas diferentes antes de responder, e escolha o menor preço com frete disponível para o Brasil. ` +
-            `Responda SOMENTE em JSON, sem markdown, sem texto antes ou depois, no formato: ` +
-            `{"produto": "nome exato encontrado", "preco": 99.90, "link": "https://...", "loja_ou_vendedor": "nome da loja"}. ` +
-            `Se não encontrar nada confiável em nenhuma loja, responda {"erro": "não encontrado"}.`
-        }]
-      })
-    });
+    const resposta = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Pesquise na internet (lojas online brasileiras como Mercado Livre, Amazon Brasil, Magazine Luiza, Americanas, Shopee, AliExpress, ou sites de fabricantes/distribuidores) o menor preço atual para o produto: "${pedido.item}". ` +
+                `Compare pelo menos 2 ou 3 lojas diferentes antes de responder, e escolha o menor preço com frete disponível para o Brasil. ` +
+                `Responda SOMENTE em JSON, sem markdown, sem texto antes ou depois, no formato: ` +
+                `{"produto": "nome exato encontrado", "preco": 99.90, "link": "https://...", "loja_ou_vendedor": "nome da loja"}. ` +
+                `Se não encontrar nada confiável em nenhuma loja, responda {"erro": "não encontrado"}.`
+            }]
+          }],
+          tools: [{ google_search: {} }]
+        })
+      }
+    );
 
     const dados = await resposta.json();
 
@@ -264,7 +265,7 @@ app.post('/api/pedidos/:id/buscar-preco', exigirSenha, async (req, res) => {
       return res.status(500).json({ erro: 'debug_http_' + resposta.status, detalhe: JSON.stringify(dados).slice(0, 500) });
     }
 
-    const textoResposta = (dados.choices?.[0]?.message?.content || '')
+    const textoResposta = (dados.candidates?.[0]?.content?.parts?.[0]?.text || '')
       .replace(/```json|```/g, '')
       .trim();
 
